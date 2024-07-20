@@ -10,12 +10,28 @@ import (
 	"path/filepath"
 	"strings"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gin-gonic/gin"
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
+var mqttClient mqtt.Client
+
 func ControllerDebug(c *gin.Context) {
 	c.JSON(200, gin.H{"debug": "ok"})
+}
+
+func MqttConnection() {
+	opts := mqtt.NewClientOptions().AddBroker("tcp://localhost:1883")
+	opts.SetDefaultPublishHandler(func(client mqtt.Client, msg mqtt.Message) {
+		fmt.Printf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+	})
+
+	mqttClient = mqtt.NewClient(opts)
+	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
+		panic(token.Error())
+
+	}
 }
 
 func DownloadImage(bot *linebot.Client, messageID string) error {
@@ -116,6 +132,7 @@ func DownloadFile(bot *linebot.Client, messageID string, fileName string) (strin
 }
 
 func ControllerLineReplyMsg(c *gin.Context) {
+	MqttConnection()
 	const LOCALIMAGE_URL = "https://da2b-49-229-126-85.ngrok-free.app/static"
 	const CH_SECRET = "5ef71f88c9f2b51ef476624c4386d4a3"
 	const TOKEN = "QMgC0s/UrLHAwAOUvCRkGQyFMbnMX4p+P3MdfwyY3NDY8P4Q7XWNAo30ibED9XUbQ61kj9QFka9Lc3YvxV+fGSnec7h+cuYBrKXVVQhPxSWNGUx0iR+HQu9hKak+FcvP9dz1w3OWHSNopDYqO4i3MgdB04t89/1O/w1cDnyilFU="
@@ -132,9 +149,9 @@ func ControllerLineReplyMsg(c *gin.Context) {
 		}
 	}
 
-	jsonEvt, err := json.Marshal(events)
+	_, err = json.Marshal(events)
 	// fmt.Println("jsonEvt => ", jsonEvt)
-	log.Printf("Event: %s", jsonEvt)
+	// log.Printf("Event: %s", jsonEvt)
 	for _, event := range events {
 		if event.Type == linebot.EventTypeMessage {
 			switch message := event.Message.(type) {
@@ -142,6 +159,23 @@ func ControllerLineReplyMsg(c *gin.Context) {
 			case *linebot.TextMessage:
 				fmt.Println("msg text => ", event.Message)
 				if message.Text == "debug" {
+					if _, err = client.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(message.Text)).Do(); err != nil {
+						log.Print(err)
+					}
+				} else if message.Text == "LED-ON" {
+					topic := "sensor/control"
+					commands := "{'command': 1}"
+					token := mqttClient.Publish(topic, 0, false, commands)
+					fmt.Println("token => ", token)
+					token.Wait()
+					if _, err = client.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(message.Text)).Do(); err != nil {
+						log.Print(err)
+					}
+				} else if message.Text == "LED-OFF" {
+					topic := "sensor/control"
+					commands := "{'command': 0}"
+					token := mqttClient.Publish(topic, 0, false, commands)
+					token.Wait()
 					if _, err = client.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(message.Text)).Do(); err != nil {
 						log.Print(err)
 					}

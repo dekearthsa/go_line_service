@@ -1,0 +1,23 @@
+version: '3.7'
+
+volumes:
+  database:
+    external: true
+
+services:
+  service_line_fruk:
+    container_name: service_line_fruk
+    # platform: linux/arm64/v8
+    restart: unless-stopped 
+    build:
+      context: "./"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3330:3330"
+    volumes:
+      # - ./service_ad/logs:/usr/src/logs
+      - /home/pi/Pictures:/root/image
+      - /home/pi/Music:/root/audio
+      - /home/pi/Videos:/root/video
+      - /home/pi/Documents:/root/files
